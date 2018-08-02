@@ -1,0 +1,97 @@
+    server {
+    listen                *:80;
+    server_name           ~^((?<code>.+)\.)?(?<project>.+)\.test$;
+
+    set $root /var/www/$project;
+    index index.php index.html;
+    root $root;
+    error_log             /var/log/nginx/error.log debug;
+
+    if (-d /var/www/$project/public) {
+        set $root /var/www/$project/public;
+    }
+    if (-d /var/www/$project/web) {
+        set $root /var/www/$project/web;
+    }
+
+    if (-d /var/www/$project/htdocs) {
+        set $root /var/www/$project/htdocs;
+    }
+    if (-d /var/www/$project/magento/src/magento) {
+        set $root /var/www/$project/magento/src/magento;
+    }
+
+    location ~* \.(gif|jpg|jpeg|png|wmv|avi|mpg|mpeg|mp4|js|css|mp3|swf|ico|flv|woff|ttf|eot|svg)$ {
+        access_log off;
+        add_header Access-Control-Allow-Origin *;
+        expires 30d;
+        open_file_cache max=50000 inactive=20s;
+        open_file_cache_valid 120m;
+        index     index.html index.htm index.php;
+    }
+
+   # location /pub/static {
+   #     rewrite ^/pub/static/(.*)$ /pub/static.php?resource=$1? last;
+   # }
+
+    location /pub/ {
+        location ~ ^/pub/media/(downloadable|customer|import|theme_customization/.*\.xml) {
+            deny all;
+        }
+        alias $root/pub/;
+        add_header X-Frame-Options "SAMEORIGIN";
+    }
+
+    location / {
+        try_files $uri $uri/ @handler;
+    }
+
+    location /pub/static/ {
+        # Uncomment the following line in production mode
+        # expires max;
+
+        # Remove signature of the static files that is used to overcome the browser cache
+        location ~ ^/pub/static/version {
+            rewrite ^/pub/static/(version\d*/)?(.*)$ /pub/static/$2 last;
+        }
+
+        location ~* \.(ico|jpg|jpeg|png|gif|svg|js|css|swf|eot|ttf|otf|woff|woff2)$ {
+            add_header Cache-Control "public";
+            add_header X-Frame-Options "SAMEORIGIN";
+            expires +1y;
+
+            if (!-f $request_filename) {
+                rewrite ^/pub/static/(version\d*/)?(.*)$ /pub/static.php?resource=$2 last;
+            }
+        }
+        location ~* \.(zip|gz|gzip|bz2|csv|xml)$ {
+            add_header Cache-Control "no-store";
+            add_header X-Frame-Options "SAMEORIGIN";
+            expires    off;
+
+            if (!-f $request_filename) {
+               rewrite ^/pub/static/(version\d*/)?(.*)$ /pub/static.php?resource=$2 last;
+            }
+        }
+        if (!-f $request_filename) {
+            rewrite ^/pub/static/(version\d*/)?(.*)$ /pub/static.php?resource=$2 last;
+        }
+        add_header X-Frame-Options "SAMEORIGIN";
+    }
+    location @handler {
+        rewrite   / /index.php;
+    }
+
+    location ~ \.php$ {
+        root $root;
+        fastcgi_param MAGE_RUN_CODE $code;
+        fastcgi_param MAGE_RUN_TYPE website;
+        fastcgi_read_timeout 3600;
+        include       fastcgi_params;
+        #fastcgi_param  SCRIPT_FILENAME  /scripts$fastcgi_script_name;
+        #fastcgi_param    SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass  php70;
+        fastcgi_index index.php;
+        #fastcgi_split_path_info ^(.+\.php)(/.+)$;
+    }
+}
